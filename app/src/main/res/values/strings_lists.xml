@@ -8,4 +8,9 @@
     <string name="folder_delete">Supprimer le dossier</string>
     <string name="folder_done">Terminé</string>
     <string name="folder_add">+</string>
+    <string name="folder_icon">Changer l\'icône</string>
+    <string name="folder_icon_default">Icône par défaut</string>
+    <string name="folder_icon_custom">Autre emoji</string>
+    <string name="folder_icon_custom_hint">Saisis ou colle un emoji</string>
+    <string name="folder_hidden_apps">Masquées</string>
 </resources>

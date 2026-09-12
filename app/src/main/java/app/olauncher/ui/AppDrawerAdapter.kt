@@ -16,6 +16,7 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import app.olauncher.R
+import app.olauncher.data.AppLists
 import app.olauncher.data.AppModel
 import app.olauncher.data.Constants
 import app.olauncher.databinding.AdapterAppDrawerBinding
@@ -62,6 +63,12 @@ class AppDrawerAdapter(
 
     private var autoLaunch = true
     private var isBangSearch = false
+
+    // Olauncher V2 - dossiers
+    var folderedApps: Set<String> = emptySet()
+    var openFolderApps: Set<String>? = null
+    var folderLabels: Map<String, String> = emptyMap()
+    private var showFolderLabels = false
     var allowAutoLaunch = true
     private val diacriticsRegex = Regex("\\p{InCombiningDiacriticalMarks}+")
     private val separatorsRegex = Regex("[-_+,.`'\\s\\p{Z}]")
@@ -121,7 +128,8 @@ class AppDrawerAdapter(
                     appInfoListener,
                     appHideListener,
                     appRenameListener,
-                    appFoldersListener
+                    appFoldersListener,
+                    if (showFolderLabels) folderLabels[AppLists.idOf(appModel)].orEmpty() else ""
                 )
             }
         } catch (e: Exception) {
@@ -137,8 +145,20 @@ class AppDrawerAdapter(
                 isBangSearch = charSearch?.startsWith("!") ?: false
                 autoLaunch = allowAutoLaunch && (charSearch?.startsWith(" ")?.not() ?: true)
 
-                val appFilteredList = (if (charSearch.isNullOrBlank()) appsList
-                else appsList.filter { app ->
+                showFolderLabels = charSearch.isNullOrBlank().not()
+
+                val appFilteredList = (if (charSearch.isNullOrBlank()) {
+                    // Sans recherche : soit le dossier ouvert, soit les applis hors dossier
+                    val open = openFolderApps
+                    if (open == null) appsList.filter { app ->
+                        app is AppModel.PrivateSpaceHeader || app.appPackage.isEmpty() ||
+                            folderedApps.contains(AppLists.idOf(app)).not()
+                    } as MutableList<AppModel>
+                    else appsList.filter { app ->
+                        app !is AppModel.PrivateSpaceHeader &&
+                            (app.appPackage.isEmpty() || open.contains(AppLists.idOf(app)))
+                    } as MutableList<AppModel>
+                } else appsList.filter { app ->
                     app !is AppModel.PrivateSpaceHeader && appLabelMatches(app.appLabel, charSearch)
                 } as MutableList<AppModel>)
 
@@ -236,6 +256,7 @@ class AppDrawerAdapter(
             appHideListener: (AppModel, Int) -> Unit,
             appRenameListener: (AppModel, String) -> Unit,
             appFoldersListener: (AppModel) -> Unit,
+            folderLabel: String,
         ) = with(binding) {
             appHideLayout.visibility = View.GONE
             renameLayout.visibility = View.GONE
@@ -245,6 +266,7 @@ class AppDrawerAdapter(
             appTitle.text = buildString {
                 append(appModel.appLabel)
                 if (appModel.isNew) append(" ✦")
+                if (folderLabel.isNotEmpty()) append("  ·  ").append(folderLabel)
             }
             appTitle.gravity = appLabelGravity
             otherProfileIndicator.isVisible = appModel.user != myUserHandle

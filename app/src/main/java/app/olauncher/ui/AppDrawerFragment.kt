@@ -5,7 +5,9 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Process
 import android.text.Spannable
+import android.view.GestureDetector
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.animation.AnimationUtils
@@ -16,6 +18,7 @@ import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.SearchView
+import androidx.core.os.bundleOf
 import androidx.fragment.app.activityViewModels
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.ItemTouchHelper
@@ -26,6 +29,7 @@ import app.olauncher.MainViewModel
 import app.olauncher.R
 import app.olauncher.data.AppLists
 import app.olauncher.data.AppModel
+import app.olauncher.data.Folder
 import app.olauncher.data.Constants
 import app.olauncher.data.Prefs
 import app.olauncher.databinding.FragmentAppDrawerBinding
@@ -38,6 +42,7 @@ import app.olauncher.helper.openAppInfo
 import app.olauncher.helper.openSearch
 import app.olauncher.helper.openUrl
 import app.olauncher.helper.showKeyboard
+import kotlin.math.abs
 import app.olauncher.helper.showToast
 import app.olauncher.helper.uninstall
 
@@ -102,6 +107,7 @@ class AppDrawerFragment : BaseFragment() {
             e.printStackTrace()
         }
         initFolders()
+        initDrawerSwipe()
     }
 
     private fun initSearch() {
@@ -319,14 +325,17 @@ class AppDrawerFragment : BaseFragment() {
             }
         }
 
-        val listName = selectedFolder
-        val shown = if (flag == Constants.FLAG_LAUNCH_APP && listName != null) {
-            val ids = appListsPrefs.appsIn(listName)
-            combined.filter { it !is AppModel.PrivateSpaceHeader && ids.contains(AppLists.idOf(it)) }
-                .toMutableList()
-        } else combined
+        if (flag == Constants.FLAG_LAUNCH_APP) {
+            adapter.folderedApps = appListsPrefs.allFolderedApps()
+            adapter.openFolderApps = selectedFolder?.let { appListsPrefs.appsIn(it) }
+            adapter.folderLabels = appListsPrefs.labelsByApp()
+        } else {
+            adapter.folderedApps = emptySet()
+            adapter.openFolderApps = null
+            adapter.folderLabels = emptyMap()
+        }
 
-        adapter.setAppList(shown)
+        adapter.setAppList(combined)
         adapter.filter.filter(binding.search.query)
     }
 
@@ -371,7 +380,14 @@ class AppDrawerFragment : BaseFragment() {
                 refreshFolders()
                 updateCombinedAppList()
             },
-            onAddFolder = { showCreateFolderDialog(null) }
+            onAddFolder = { showCreateFolderDialog(null) },
+            onHiddenApps = {
+                binding.search.hideKeyboard()
+                findNavController().navigate(
+                    R.id.action_appListFragment_self,
+                    bundleOf(Constants.Key.FLAG to Constants.FLAG_HIDDEN_APPS)
+                )
+            }
         )
 
         binding.folderRecycler.layoutManager =
@@ -384,10 +400,58 @@ class AppDrawerFragment : BaseFragment() {
 
     private fun refreshFolders() {
         if (flag != Constants.FLAG_LAUNCH_APP) return
-        val names = appListsPrefs.names()
-        if (selectedFolder != null && names.contains(selectedFolder).not()) selectedFolder = null
-        folderAdapter.setFolders(names, selectedFolder)
+        val folders: List<Folder> = appListsPrefs.getFolders()
+        if (selectedFolder != null && folders.none { it.name == selectedFolder }) selectedFolder = null
+        folderAdapter.setFolders(folders, selectedFolder)
         binding.folderRecycler.visibility = View.VISIBLE
+    }
+
+    /** Balayage horizontal dans le tiroir = dossier suivant / precedent. */
+    private fun initDrawerSwipe() {
+        val detector = GestureDetector(
+            requireContext(),
+            object : GestureDetector.SimpleOnGestureListener() {
+                override fun onFling(
+                    e1: MotionEvent?,
+                    e2: MotionEvent,
+                    velocityX: Float,
+                    velocityY: Float
+                ): Boolean {
+                    if (e1 == null) return false
+                    val dx = e2.x - e1.x
+                    val dy = e2.y - e1.y
+                    if (abs(dx) < dp(70) || abs(dx) < abs(dy) * 2) return false
+                    switchFolder(if (dx < 0) 1 else -1)
+                    return true
+                }
+            }
+        )
+        binding.recyclerView.addOnItemTouchListener(
+            object : RecyclerView.SimpleOnItemTouchListener() {
+                override fun onInterceptTouchEvent(rv: RecyclerView, e: MotionEvent): Boolean {
+                    detector.onTouchEvent(e)
+                    return false
+                }
+            }
+        )
+    }
+
+    private fun switchFolder(direction: Int) {
+        if (flag != Constants.FLAG_LAUNCH_APP) return
+        if (binding.search.query.isNullOrBlank().not()) return
+        val names = appListsPrefs.names()
+        if (names.isEmpty()) return
+
+        val items: List<String?> = listOf(null) + names
+        var next = items.indexOf(selectedFolder) + direction
+        if (next < 0) next = items.size - 1
+        if (next >= items.size) next = 0
+
+        selectedFolder = items[next]
+        refreshFolders()
+        updateCombinedAppList()
+        binding.folderRecycler.smoothScrollToPosition(if (next == 0) 0 else next - 1)
+        binding.recyclerView.scrollToPosition(0)
     }
 
     /**
@@ -402,7 +466,7 @@ class AppDrawerFragment : BaseFragment() {
                 recyclerView: RecyclerView,
                 viewHolder: RecyclerView.ViewHolder
             ): Int {
-                if (viewHolder.itemViewType == FolderAdapter.TYPE_ADD) return 0
+                if (viewHolder.itemViewType != FolderAdapter.TYPE_FOLDER) return 0
                 return super.getMovementFlags(recyclerView, viewHolder)
             }
 
@@ -411,7 +475,7 @@ class AppDrawerFragment : BaseFragment() {
                 viewHolder: RecyclerView.ViewHolder,
                 target: RecyclerView.ViewHolder
             ): Boolean {
-                if (target.itemViewType == FolderAdapter.TYPE_ADD) return false
+                if (target.itemViewType != FolderAdapter.TYPE_FOLDER) return false
                 val moved = folderAdapter.moveItem(
                     viewHolder.bindingAdapterPosition,
                     target.bindingAdapterPosition
@@ -499,19 +563,67 @@ class AppDrawerFragment : BaseFragment() {
     }
 
     private fun showFolderOptionsDialog(name: String) {
-        val options = arrayOf(getString(R.string.rename), getString(R.string.folder_delete))
+        val options = arrayOf(
+            getString(R.string.rename),
+            getString(R.string.folder_icon),
+            getString(R.string.folder_delete)
+        )
         AlertDialog.Builder(requireContext())
             .setTitle(name)
             .setItems(options) { _, which ->
-                if (which == 0) showRenameFolderDialog(name)
-                else {
-                    appListsPrefs.deleteList(name)
-                    if (selectedFolder == name) selectedFolder = null
-                    refreshFolders()
-                    updateCombinedAppList()
+                when (which) {
+                    0 -> showRenameFolderDialog(name)
+                    1 -> showFolderIconDialog(name)
+                    else -> {
+                        appListsPrefs.deleteList(name)
+                        if (selectedFolder == name) selectedFolder = null
+                        refreshFolders()
+                        updateCombinedAppList()
+                    }
                 }
             }
             .show()
+    }
+
+    private fun showFolderIconDialog(name: String) {
+        val icons = listOf(
+            "", "📁", "⭐", "💬", "🎮", "🎵", "📷", "🛒", "💼", "📚", "⚙️", "🏃",
+            "🍔", "✈️", "💰", "❤️", "🎬", "📞", "🌐", "🔧", "📝", "☁️", "🔒", "🎨"
+        )
+        val labels = icons.map {
+            if (it.isBlank()) getString(R.string.folder_icon_default) else it
+        }.toTypedArray()
+
+        AlertDialog.Builder(requireContext())
+            .setTitle(name)
+            .setItems(labels) { _, which ->
+                appListsPrefs.setIcon(name, icons[which])
+                refreshFolders()
+            }
+            .setNeutralButton(R.string.folder_icon_custom) { _, _ ->
+                showCustomIconDialog(name)
+            }
+            .show()
+    }
+
+    private fun showCustomIconDialog(name: String) {
+        val input = EditText(requireContext())
+        input.hint = getString(R.string.folder_icon_custom_hint)
+        input.setSingleLine()
+        val container = FrameLayout(requireContext())
+        container.setPadding(dp(24), dp(8), dp(24), 0)
+        container.addView(input)
+
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.folder_icon_custom)
+            .setView(container)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                appListsPrefs.setIcon(name, input.text.toString().trim().take(2))
+                refreshFolders()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+        input.showKeyboard()
     }
 
     private fun showRenameFolderDialog(name: String) {
