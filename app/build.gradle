@@ -33,7 +33,7 @@ android {
         debug {
             debuggable true
             minifyEnabled false
-            applicationIdSuffix ".debug"
+            applicationIdSuffix ".v2"
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
