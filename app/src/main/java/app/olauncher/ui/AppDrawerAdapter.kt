@@ -2,6 +2,12 @@ package app.olauncher.ui
 
 import android.content.Context
 import android.content.pm.LauncherApps
+import android.graphics.Typeface
+import android.text.Spannable
+import android.text.SpannableString
+import android.text.style.ForegroundColorSpan
+import android.text.style.RelativeSizeSpan
+import android.text.style.StyleSpan
 import android.os.UserHandle
 import android.text.Editable
 import android.text.TextWatcher
@@ -11,6 +17,7 @@ import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.widget.Filter
 import android.widget.Filterable
+import androidx.core.graphics.ColorUtils
 import androidx.core.view.isVisible
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
@@ -263,10 +270,24 @@ class AppDrawerAdapter(
             appTitle.visibility = View.VISIBLE
 
             // Show indicators in title based on app type and state
-            appTitle.text = buildString {
+            val baseTitle = buildString {
                 append(appModel.appLabel)
                 if (appModel.isNew) append(" ✦")
-                if (folderLabel.isNotEmpty()) append("  ·  ").append(folderLabel)
+            }
+            appTitle.text = if (folderLabel.isEmpty()) baseTitle
+            else {
+                val suffix = "   " + folderLabel
+                SpannableString(baseTitle + suffix).apply {
+                    val start = baseTitle.length
+                    val flag = Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                    setSpan(RelativeSizeSpan(0.62f), start, length, flag)
+                    setSpan(StyleSpan(Typeface.ITALIC), start, length, flag)
+                    setSpan(
+                        ForegroundColorSpan(
+                            ColorUtils.setAlphaComponent(appTitle.currentTextColor, 130)
+                        ), start, length, flag
+                    )
+                }
             }
             appTitle.gravity = appLabelGravity
             otherProfileIndicator.isVisible = appModel.user != myUserHandle
