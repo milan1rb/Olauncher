@@ -11,15 +11,20 @@ import android.view.ViewGroup
 import android.view.animation.AnimationUtils
 import android.view.inputmethod.BaseInputConnection
 import android.view.inputmethod.InputMethodManager
+import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.SearchView
 import androidx.fragment.app.activityViewModels
 import androidx.navigation.fragment.findNavController
+import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.RecyclerView.Recycler
 import app.olauncher.MainViewModel
 import app.olauncher.R
+import app.olauncher.data.AppLists
 import app.olauncher.data.AppModel
 import app.olauncher.data.Constants
 import app.olauncher.data.Prefs
@@ -38,7 +43,12 @@ import app.olauncher.helper.uninstall
 
 class AppDrawerFragment : BaseFragment() {
 
+
     private lateinit var prefs: Prefs
+    private lateinit var appListsPrefs: AppLists
+    private var selectedFolder: String? = null
+    private lateinit var folderAdapter: FolderAdapter
+    private var dragMoved = false
     private lateinit var adapter: AppDrawerAdapter
     private lateinit var linearLayoutManager: LinearLayoutManager
     private var searchTextView: TextView? = null
@@ -67,6 +77,7 @@ class AppDrawerFragment : BaseFragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         prefs = Prefs(requireContext())
+        appListsPrefs = AppLists(requireContext())
         arguments?.let {
             flag = it.getInt(Constants.Key.FLAG, Constants.FLAG_LAUNCH_APP)
             canRename = it.getBoolean(Constants.Key.RENAME, false)
@@ -90,6 +101,7 @@ class AppDrawerFragment : BaseFragment() {
         } catch (e: Exception) {
             e.printStackTrace()
         }
+        initFolders()
     }
 
     private fun initSearch() {
@@ -227,6 +239,10 @@ class AppDrawerFragment : BaseFragment() {
                 prefs.setAppRenameLabel(identifier, renameLabel)
                 viewModel.getAppList()
             },
+            appFoldersListener = { appModel ->
+                binding.search.hideKeyboard()
+                showAppFoldersDialog(appModel)
+            },
             privateSpaceToggleListener = {
                 viewModel.togglePrivateSpaceLock()
             },
@@ -303,7 +319,14 @@ class AppDrawerFragment : BaseFragment() {
             }
         }
 
-        adapter.setAppList(combined)
+        val listName = selectedFolder
+        val shown = if (flag == Constants.FLAG_LAUNCH_APP && listName != null) {
+            val ids = appListsPrefs.appsIn(listName)
+            combined.filter { it !is AppModel.PrivateSpaceHeader && ids.contains(AppLists.idOf(it)) }
+                .toMutableList()
+        } else combined
+
+        adapter.setAppList(shown)
         adapter.filter.filter(binding.search.query)
     }
 
@@ -328,6 +351,194 @@ class AppDrawerFragment : BaseFragment() {
             }
             findNavController().popBackStack()
         }
+    }
+
+    // ---------------------------------------------------------------
+    // Olauncher V2 - Dossiers
+    // ---------------------------------------------------------------
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
+    private fun initFolders() {
+        if (flag != Constants.FLAG_LAUNCH_APP) {
+            binding.folderRecycler.visibility = View.GONE
+            return
+        }
+
+        folderAdapter = FolderAdapter(
+            onFolderClick = { name ->
+                selectedFolder = if (selectedFolder == name) null else name
+                refreshFolders()
+                updateCombinedAppList()
+            },
+            onAddFolder = { showCreateFolderDialog(null) }
+        )
+
+        binding.folderRecycler.layoutManager =
+            LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
+        binding.folderRecycler.adapter = folderAdapter
+        ItemTouchHelper(folderDragCallback()).attachToRecyclerView(binding.folderRecycler)
+
+        refreshFolders()
+    }
+
+    private fun refreshFolders() {
+        if (flag != Constants.FLAG_LAUNCH_APP) return
+        val names = appListsPrefs.names()
+        if (selectedFolder != null && names.contains(selectedFolder).not()) selectedFolder = null
+        folderAdapter.setFolders(names, selectedFolder)
+        binding.folderRecycler.visibility = View.VISIBLE
+    }
+
+    /**
+     * Appui long + glissement = reordonner les dossiers.
+     * Appui long sans bouger = menu renommer / supprimer.
+     */
+    private fun folderDragCallback(): ItemTouchHelper.Callback {
+        return object : ItemTouchHelper.SimpleCallback(
+            ItemTouchHelper.START or ItemTouchHelper.END, 0
+        ) {
+            override fun getMovementFlags(
+                recyclerView: RecyclerView,
+                viewHolder: RecyclerView.ViewHolder
+            ): Int {
+                if (viewHolder.itemViewType == FolderAdapter.TYPE_ADD) return 0
+                return super.getMovementFlags(recyclerView, viewHolder)
+            }
+
+            override fun onMove(
+                recyclerView: RecyclerView,
+                viewHolder: RecyclerView.ViewHolder,
+                target: RecyclerView.ViewHolder
+            ): Boolean {
+                if (target.itemViewType == FolderAdapter.TYPE_ADD) return false
+                val moved = folderAdapter.moveItem(
+                    viewHolder.bindingAdapterPosition,
+                    target.bindingAdapterPosition
+                )
+                if (moved) dragMoved = true
+                return moved
+            }
+
+            override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {}
+
+            override fun onSelectedChanged(
+                viewHolder: RecyclerView.ViewHolder?,
+                actionState: Int
+            ) {
+                super.onSelectedChanged(viewHolder, actionState)
+                if (actionState == ItemTouchHelper.ACTION_STATE_DRAG) {
+                    dragMoved = false
+                    viewHolder?.itemView?.alpha = 0.6f
+                }
+            }
+
+            override fun clearView(
+                recyclerView: RecyclerView,
+                viewHolder: RecyclerView.ViewHolder
+            ) {
+                super.clearView(recyclerView, viewHolder)
+                viewHolder.itemView.alpha = 1f
+                val position = viewHolder.bindingAdapterPosition
+                if (dragMoved) {
+                    appListsPrefs.setOrder(folderAdapter.currentOrder())
+                } else {
+                    folderAdapter.folderAt(position)?.let { showFolderOptionsDialog(it) }
+                }
+                dragMoved = false
+            }
+        }
+    }
+
+    private fun showAppFoldersDialog(appModel: AppModel) {
+        val names = appListsPrefs.names()
+        if (names.isEmpty()) {
+            showCreateFolderDialog(appModel)
+            return
+        }
+        val appId = AppLists.idOf(appModel)
+        val checked = BooleanArray(names.size) { appListsPrefs.isInList(names[it], appId) }
+        AlertDialog.Builder(requireContext())
+            .setTitle(appModel.appLabel)
+            .setMultiChoiceItems(names.toTypedArray(), checked) { _, which, isChecked ->
+                appListsPrefs.setAppInList(names[which], appId, isChecked)
+            }
+            .setNeutralButton(R.string.new_folder) { _, _ -> showCreateFolderDialog(appModel) }
+            .setPositiveButton(R.string.folder_done, null)
+            .setOnDismissListener {
+                refreshFolders()
+                updateCombinedAppList()
+            }
+            .show()
+    }
+
+    private fun showCreateFolderDialog(appModel: AppModel?) {
+        val input = EditText(requireContext())
+        input.hint = getString(R.string.folder_name_hint)
+        input.setSingleLine()
+        val container = FrameLayout(requireContext())
+        container.setPadding(dp(24), dp(8), dp(24), 0)
+        container.addView(input)
+
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.new_folder)
+            .setView(container)
+            .setPositiveButton(R.string.folder_create) { _, _ ->
+                val name = input.text.toString().trim()
+                if (appListsPrefs.createList(name)) {
+                    appModel?.let { appListsPrefs.setAppInList(name, AppLists.idOf(it), true) }
+                    refreshFolders()
+                    updateCombinedAppList()
+                } else {
+                    requireContext().showToast(getString(R.string.folder_name_invalid))
+                }
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+        input.showKeyboard()
+    }
+
+    private fun showFolderOptionsDialog(name: String) {
+        val options = arrayOf(getString(R.string.rename), getString(R.string.folder_delete))
+        AlertDialog.Builder(requireContext())
+            .setTitle(name)
+            .setItems(options) { _, which ->
+                if (which == 0) showRenameFolderDialog(name)
+                else {
+                    appListsPrefs.deleteList(name)
+                    if (selectedFolder == name) selectedFolder = null
+                    refreshFolders()
+                    updateCombinedAppList()
+                }
+            }
+            .show()
+    }
+
+    private fun showRenameFolderDialog(name: String) {
+        val input = EditText(requireContext())
+        input.setText(name)
+        input.setSingleLine()
+        input.setSelectAllOnFocus(true)
+        val container = FrameLayout(requireContext())
+        container.setPadding(dp(24), dp(8), dp(24), 0)
+        container.addView(input)
+
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.rename)
+            .setView(container)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                val newName = input.text.toString().trim()
+                if (appListsPrefs.renameList(name, newName)) {
+                    if (selectedFolder == name) selectedFolder = newName
+                    refreshFolders()
+                    updateCombinedAppList()
+                } else {
+                    requireContext().showToast(getString(R.string.folder_name_invalid))
+                }
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+        input.showKeyboard()
     }
 
     private fun getRecyclerViewOnScrollListener(): RecyclerView.OnScrollListener {
