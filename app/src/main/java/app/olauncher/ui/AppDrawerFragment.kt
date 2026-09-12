@@ -428,6 +428,113 @@ class AppDrawerFragment : BaseFragment() {
         return count
     }
 
+    /** Balayage horizontal dans le tiroir = dossier suivant / precedent. */
+    private fun initDrawerSwipe() {
+        val detector = GestureDetector(
+            requireContext(),
+            object : GestureDetector.SimpleOnGestureListener() {
+                override fun onFling(
+                    e1: MotionEvent?,
+                    e2: MotionEvent,
+                    velocityX: Float,
+                    velocityY: Float
+                ): Boolean {
+                    if (e1 == null) return false
+                    val dx = e2.x - e1.x
+                    val dy = e2.y - e1.y
+                    if (abs(dx) < dp(70) || abs(dx) < abs(dy) * 2) return false
+                    switchFolder(if (dx < 0) 1 else -1)
+                    return true
+                }
+            }
+        )
+        binding.recyclerView.addOnItemTouchListener(
+            object : RecyclerView.SimpleOnItemTouchListener() {
+                override fun onInterceptTouchEvent(rv: RecyclerView, e: MotionEvent): Boolean {
+                    detector.onTouchEvent(e)
+                    return false
+                }
+            }
+        )
+    }
+
+    private fun switchFolder(direction: Int) {
+        if (flag != Constants.FLAG_LAUNCH_APP) return
+        if (binding.search.query.isNullOrBlank().not()) return
+        val names = appListsPrefs.names()
+        if (names.isEmpty()) return
+
+        val items: List<String?> = listOf(null) + names
+        var next = items.indexOf(selectedFolder) + direction
+        if (next < 0) next = items.size - 1
+        if (next >= items.size) next = 0
+
+        selectedFolder = items[next]
+        refreshFolders()
+        updateCombinedAppList()
+        binding.recyclerView.scrollToPosition(0)
+    }
+
+    /**
+     * Appui long + glissement = reordonner les dossiers.
+     * Appui long sans bouger = menu renommer / icone / supprimer.
+     */
+    private fun folderDragCallback(): ItemTouchHelper.Callback {
+        return object : ItemTouchHelper.SimpleCallback(
+            ItemTouchHelper.START or ItemTouchHelper.END, 0
+        ) {
+            override fun getMovementFlags(
+                recyclerView: RecyclerView,
+                viewHolder: RecyclerView.ViewHolder
+            ): Int {
+                if (viewHolder.itemViewType != FolderAdapter.TYPE_FOLDER) return 0
+                return super.getMovementFlags(recyclerView, viewHolder)
+            }
+
+            override fun onMove(
+                recyclerView: RecyclerView,
+                viewHolder: RecyclerView.ViewHolder,
+                target: RecyclerView.ViewHolder
+            ): Boolean {
+                if (target.itemViewType != FolderAdapter.TYPE_FOLDER) return false
+                val moved = folderAdapter.moveItem(
+                    viewHolder.bindingAdapterPosition,
+                    target.bindingAdapterPosition
+                )
+                if (moved) dragMoved = true
+                return moved
+            }
+
+            override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {}
+
+            override fun onSelectedChanged(
+                viewHolder: RecyclerView.ViewHolder?,
+                actionState: Int
+            ) {
+                super.onSelectedChanged(viewHolder, actionState)
+                if (actionState == ItemTouchHelper.ACTION_STATE_DRAG) {
+                    dragMoved = false
+                    viewHolder?.itemView?.alpha = 0.6f
+                }
+            }
+
+            override fun clearView(
+                recyclerView: RecyclerView,
+                viewHolder: RecyclerView.ViewHolder
+            ) {
+                super.clearView(recyclerView, viewHolder)
+                viewHolder.itemView.alpha = 1f
+                val position = viewHolder.bindingAdapterPosition
+                if (dragMoved) {
+                    appListsPrefs.setOrder(folderAdapter.currentOrder())
+                } else {
+                    folderAdapter.folderAt(position)?.let { showFolderOptionsDialog(it) }
+                }
+                dragMoved = false
+            }
+        }
+    }
+
     /** Menu "..." : dossiers reordonnables, creation et applis masquees. */
     private fun showAllFoldersDialog() {
         binding.search.hideKeyboard()
