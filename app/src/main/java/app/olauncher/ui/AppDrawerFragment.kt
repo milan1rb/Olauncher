@@ -412,7 +412,7 @@ class AppDrawerFragment : BaseFragment() {
         val sample = TextView(requireContext(), null, 0, R.style.TextSmall)
         val density = resources.displayMetrics.density
         fun chipWidth(label: String, hasIcon: Boolean): Int {
-            val extras = (14 + 14 + 8) * density + if (hasIcon) (16 + 6) * density else 0f
+            val extras = (10 + 10 + 4) * density + if (hasIcon) (16 + 6) * density else 0f
             return (sample.paint.measureText(label) + extras).toInt()
         }
 
