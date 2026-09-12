@@ -27,7 +27,18 @@ jobs:
       - name: Build debug APK
         run: |
           chmod +x ./gradlew
-          ./gradlew assembleDebug --stacktrace
+          set -o pipefail
+          ./gradlew assembleDebug --stacktrace 2>&1 | tee build.log
+
+      - name: Publier le log en cas d'echec
+        if: failure()
+        run: |
+          tail -c 200000 build.log > buildlog.txt
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add -f buildlog.txt
+          git commit -m "build log [skip ci]"
+          git push
 
       - name: Upload APK as artifact
         uses: actions/upload-artifact@v4
