@@ -32,6 +32,7 @@ import app.olauncher.data.AppModel
 import app.olauncher.data.Folder
 import app.olauncher.data.Constants
 import app.olauncher.data.Prefs
+import app.olauncher.databinding.DialogFoldersBinding
 import app.olauncher.databinding.FragmentAppDrawerBinding
 import app.olauncher.helper.deletePinnedShortcut
 import app.olauncher.helper.hideKeyboard
@@ -427,150 +428,71 @@ class AppDrawerFragment : BaseFragment() {
         return count
     }
 
-    /** Menu "..." : tous les dossiers, plus la creation et les applis masquees. */
+    /** Menu "..." : dossiers reordonnables, creation et applis masquees. */
     private fun showAllFoldersDialog() {
         binding.search.hideKeyboard()
-        val folders = appListsPrefs.getFolders()
-        val entries = mutableListOf(getString(R.string.folder_all_apps))
-        folders.forEach {
-            entries.add(if (it.icon.isBlank()) it.name else it.icon + "  " + it.name)
-        }
-        entries.add(getString(R.string.new_folder))
-        entries.add(getString(R.string.folder_hidden_apps))
+        val dialogBinding = DialogFoldersBinding.inflate(layoutInflater)
+        val dialog = AlertDialog.Builder(requireContext())
+            .setView(dialogBinding.root)
+            .create()
 
-        AlertDialog.Builder(requireContext())
-            .setItems(entries.toTypedArray()) { _, which ->
-                when (which) {
-                    0 -> {
-                        selectedFolder = null
-                        refreshFolders()
-                        updateCombinedAppList()
-                    }
-
-                    entries.size - 2 -> showCreateFolderDialog(null)
-
-                    entries.size - 1 -> findNavController().navigate(
-                        R.id.action_appListFragment_self,
-                        bundleOf(Constants.Key.FLAG to Constants.FLAG_HIDDEN_APPS)
-                    )
-
-                    else -> {
-                        selectedFolder = folders[which - 1].name
-                        refreshFolders()
-                        updateCombinedAppList()
-                        binding.recyclerView.scrollToPosition(0)
-                    }
-                }
-            }
-            .show()
-    }
-
-    /** Balayage horizontal dans le tiroir = dossier suivant / precedent. */
-    private fun initDrawerSwipe() {
-        val detector = GestureDetector(
-            requireContext(),
-            object : GestureDetector.SimpleOnGestureListener() {
-                override fun onFling(
-                    e1: MotionEvent?,
-                    e2: MotionEvent,
-                    velocityX: Float,
-                    velocityY: Float
-                ): Boolean {
-                    if (e1 == null) return false
-                    val dx = e2.x - e1.x
-                    val dy = e2.y - e1.y
-                    if (abs(dx) < dp(70) || abs(dx) < abs(dy) * 2) return false
-                    switchFolder(if (dx < 0) 1 else -1)
-                    return true
-                }
-            }
+        lateinit var touchHelper: ItemTouchHelper
+        val listAdapter = FolderListAdapter(
+            onClick = { name ->
+                selectedFolder = name
+                refreshFolders()
+                updateCombinedAppList()
+                binding.recyclerView.scrollToPosition(0)
+                dialog.dismiss()
+            },
+            onStartDrag = { holder -> touchHelper.startDrag(holder) }
         )
-        binding.recyclerView.addOnItemTouchListener(
-            object : RecyclerView.SimpleOnItemTouchListener() {
-                override fun onInterceptTouchEvent(rv: RecyclerView, e: MotionEvent): Boolean {
-                    detector.onTouchEvent(e)
-                    return false
-                }
-            }
-        )
-    }
+        listAdapter.setFolders(appListsPrefs.getFolders())
 
-    private fun switchFolder(direction: Int) {
-        if (flag != Constants.FLAG_LAUNCH_APP) return
-        if (binding.search.query.isNullOrBlank().not()) return
-        val names = appListsPrefs.names()
-        if (names.isEmpty()) return
+        dialogBinding.dialogFolderList.layoutManager = LinearLayoutManager(requireContext())
+        dialogBinding.dialogFolderList.adapter = listAdapter
 
-        val items: List<String?> = listOf(null) + names
-        var next = items.indexOf(selectedFolder) + direction
-        if (next < 0) next = items.size - 1
-        if (next >= items.size) next = 0
-
-        selectedFolder = items[next]
-        refreshFolders()
-        updateCombinedAppList()
-        binding.folderRecycler.smoothScrollToPosition(if (next == 0) 0 else next - 1)
-        binding.recyclerView.scrollToPosition(0)
-    }
-
-    /**
-     * Appui long + glissement = reordonner les dossiers.
-     * Appui long sans bouger = menu renommer / supprimer.
-     */
-    private fun folderDragCallback(): ItemTouchHelper.Callback {
-        return object : ItemTouchHelper.SimpleCallback(
-            ItemTouchHelper.START or ItemTouchHelper.END, 0
+        touchHelper = ItemTouchHelper(object : ItemTouchHelper.SimpleCallback(
+            ItemTouchHelper.UP or ItemTouchHelper.DOWN, 0
         ) {
-            override fun getMovementFlags(
-                recyclerView: RecyclerView,
-                viewHolder: RecyclerView.ViewHolder
-            ): Int {
-                if (viewHolder.itemViewType != FolderAdapter.TYPE_FOLDER) return 0
-                return super.getMovementFlags(recyclerView, viewHolder)
-            }
+            override fun isLongPressDragEnabled(): Boolean = true
 
             override fun onMove(
                 recyclerView: RecyclerView,
                 viewHolder: RecyclerView.ViewHolder,
                 target: RecyclerView.ViewHolder
-            ): Boolean {
-                if (target.itemViewType != FolderAdapter.TYPE_FOLDER) return false
-                val moved = folderAdapter.moveItem(
-                    viewHolder.bindingAdapterPosition,
-                    target.bindingAdapterPosition
-                )
-                if (moved) dragMoved = true
-                return moved
-            }
+            ): Boolean = listAdapter.moveItem(
+                viewHolder.bindingAdapterPosition,
+                target.bindingAdapterPosition
+            )
 
             override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {}
+        })
+        touchHelper.attachToRecyclerView(dialogBinding.dialogFolderList)
 
-            override fun onSelectedChanged(
-                viewHolder: RecyclerView.ViewHolder?,
-                actionState: Int
-            ) {
-                super.onSelectedChanged(viewHolder, actionState)
-                if (actionState == ItemTouchHelper.ACTION_STATE_DRAG) {
-                    dragMoved = false
-                    viewHolder?.itemView?.alpha = 0.6f
-                }
-            }
-
-            override fun clearView(
-                recyclerView: RecyclerView,
-                viewHolder: RecyclerView.ViewHolder
-            ) {
-                super.clearView(recyclerView, viewHolder)
-                viewHolder.itemView.alpha = 1f
-                val position = viewHolder.bindingAdapterPosition
-                if (dragMoved) {
-                    appListsPrefs.setOrder(folderAdapter.currentOrder())
-                } else {
-                    folderAdapter.folderAt(position)?.let { showFolderOptionsDialog(it) }
-                }
-                dragMoved = false
-            }
+        dialogBinding.dialogAllApps.setOnClickListener {
+            selectedFolder = null
+            refreshFolders()
+            updateCombinedAppList()
+            dialog.dismiss()
         }
+        dialogBinding.dialogNewFolder.setOnClickListener {
+            dialog.dismiss()
+            showCreateFolderDialog(null)
+        }
+        dialogBinding.dialogHiddenApps.setOnClickListener {
+            dialog.dismiss()
+            findNavController().navigate(
+                R.id.action_appListFragment_self,
+                bundleOf(Constants.Key.FLAG to Constants.FLAG_HIDDEN_APPS)
+            )
+        }
+
+        dialog.setOnDismissListener {
+            appListsPrefs.setOrder(listAdapter.currentOrder())
+            refreshFolders()
+        }
+        dialog.show()
     }
 
     private fun showAppFoldersDialog(appModel: AppModel) {
