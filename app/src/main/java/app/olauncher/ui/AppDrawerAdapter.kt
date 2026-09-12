@@ -136,7 +136,8 @@ class AppDrawerAdapter(
                     appHideListener,
                     appRenameListener,
                     appFoldersListener,
-                    if (showFolderLabels) folderLabels[AppLists.idOf(appModel)].orEmpty() else ""
+                    if (showFolderLabels) folderLabels[AppLists.idOf(appModel)].orEmpty() else "",
+                    isGroupStart(holder.bindingAdapterPosition)
                 )
             }
         } catch (e: Exception) {
@@ -167,7 +168,7 @@ class AppDrawerAdapter(
                     } as MutableList<AppModel>
                 } else appsList.filter { app ->
                     app !is AppModel.PrivateSpaceHeader && appLabelMatches(app.appLabel, charSearch)
-                } as MutableList<AppModel>)
+                }.sortedBy { folderLabels[AppLists.idOf(it)].orEmpty() }.toMutableList())
 
                 val filterResults = FilterResults()
                 filterResults.values = appFilteredList
@@ -211,6 +212,15 @@ class AppDrawerAdapter(
         Normalizer.normalize(this, Normalizer.Form.NFD)
             .replace(diacriticsRegex, "")
             .replace(separatorsRegex, "")
+
+    /** Vrai si l'appli ouvre un nouveau groupe de dossier dans les resultats de recherche. */
+    private fun isGroupStart(position: Int): Boolean {
+        if (showFolderLabels.not() || position <= 0) return false
+        val previous = appFilteredList.getOrNull(position - 1) ?: return false
+        val current = appFilteredList.getOrNull(position) ?: return false
+        return folderLabels[AppLists.idOf(previous)].orEmpty() !=
+            folderLabels[AppLists.idOf(current)].orEmpty()
+    }
 
     fun setAppList(appsList: MutableList<AppModel>) {
         // Add empty app for bottom padding in recyclerview and assign to list
@@ -264,6 +274,7 @@ class AppDrawerAdapter(
             appRenameListener: (AppModel, String) -> Unit,
             appFoldersListener: (AppModel) -> Unit,
             folderLabel: String,
+            isGroupStart: Boolean,
         ) = with(binding) {
             appHideLayout.visibility = View.GONE
             renameLayout.visibility = View.GONE
@@ -289,6 +300,17 @@ class AppDrawerAdapter(
                     )
                 }
             }
+            val basePadding =
+                appTitle.resources.getDimensionPixelSize(R.dimen.app_padding_vertical)
+            val extraPadding =
+                if (isGroupStart) (appTitle.resources.displayMetrics.density * 26).toInt() else 0
+            appTitle.setPadding(
+                appTitle.paddingLeft,
+                basePadding + extraPadding,
+                appTitle.paddingRight,
+                basePadding
+            )
+
             appTitle.gravity = appLabelGravity
             otherProfileIndicator.isVisible = appModel.user != myUserHandle
 
