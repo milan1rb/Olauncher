@@ -380,14 +380,7 @@ class AppDrawerFragment : BaseFragment() {
                 refreshFolders()
                 updateCombinedAppList()
             },
-            onAddFolder = { showCreateFolderDialog(null) },
-            onHiddenApps = {
-                binding.search.hideKeyboard()
-                findNavController().navigate(
-                    R.id.action_appListFragment_self,
-                    bundleOf(Constants.Key.FLAG to Constants.FLAG_HIDDEN_APPS)
-                )
-            }
+            onMore = { showAllFoldersDialog() }
         )
 
         binding.folderRecycler.layoutManager =
@@ -402,8 +395,74 @@ class AppDrawerFragment : BaseFragment() {
         if (flag != Constants.FLAG_LAUNCH_APP) return
         val folders: List<Folder> = appListsPrefs.getFolders()
         if (selectedFolder != null && folders.none { it.name == selectedFolder }) selectedFolder = null
-        folderAdapter.setFolders(folders, selectedFolder)
         binding.folderRecycler.visibility = View.VISIBLE
+        folderAdapter.setFolders(folders, selectedFolder, visibleFolderCount(folders))
+        binding.folderRecycler.post {
+            folderAdapter.setFolders(folders, selectedFolder, visibleFolderCount(folders))
+        }
+    }
+
+    /** Nombre de dossiers tenant sur une ligne, en reservant la place du bouton "..." */
+    private fun visibleFolderCount(folders: List<Folder>): Int {
+        val available = binding.folderRecycler.width -
+            binding.folderRecycler.paddingStart - binding.folderRecycler.paddingEnd
+        if (available <= 0) return folders.size
+
+        val sample = TextView(requireContext(), null, 0, R.style.TextSmall)
+        val density = resources.displayMetrics.density
+        fun chipWidth(label: String, hasIcon: Boolean): Int {
+            val extras = (14 + 14 + 8) * density + if (hasIcon) (16 + 6) * density else 0f
+            return (sample.paint.measureText(label) + extras).toInt()
+        }
+
+        var used = chipWidth("• • •", false)
+        var count = 0
+        for (folder in folders) {
+            val label = if (folder.icon.isBlank()) folder.name else folder.icon + "  " + folder.name
+            val width = chipWidth(label, folder.icon.isBlank())
+            if (used + width > available) break
+            used += width
+            count++
+        }
+        return count
+    }
+
+    /** Menu "..." : tous les dossiers, plus la creation et les applis masquees. */
+    private fun showAllFoldersDialog() {
+        binding.search.hideKeyboard()
+        val folders = appListsPrefs.getFolders()
+        val entries = mutableListOf(getString(R.string.folder_all_apps))
+        folders.forEach {
+            entries.add(if (it.icon.isBlank()) it.name else it.icon + "  " + it.name)
+        }
+        entries.add(getString(R.string.new_folder))
+        entries.add(getString(R.string.folder_hidden_apps))
+
+        AlertDialog.Builder(requireContext())
+            .setItems(entries.toTypedArray()) { _, which ->
+                when (which) {
+                    0 -> {
+                        selectedFolder = null
+                        refreshFolders()
+                        updateCombinedAppList()
+                    }
+
+                    entries.size - 2 -> showCreateFolderDialog(null)
+
+                    entries.size - 1 -> findNavController().navigate(
+                        R.id.action_appListFragment_self,
+                        bundleOf(Constants.Key.FLAG to Constants.FLAG_HIDDEN_APPS)
+                    )
+
+                    else -> {
+                        selectedFolder = folders[which - 1].name
+                        refreshFolders()
+                        updateCombinedAppList()
+                        binding.recyclerView.scrollToPosition(0)
+                    }
+                }
+            }
+            .show()
     }
 
     /** Balayage horizontal dans le tiroir = dossier suivant / precedent. */
