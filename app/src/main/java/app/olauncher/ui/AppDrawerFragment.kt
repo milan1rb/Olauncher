@@ -5,6 +5,8 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Process
 import android.text.Spannable
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.GestureDetector
 import android.view.LayoutInflater
 import android.view.MotionEvent
@@ -15,6 +17,7 @@ import android.view.inputmethod.BaseInputConnection
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.SearchView
@@ -663,25 +666,73 @@ class AppDrawerFragment : BaseFragment() {
     }
 
     private fun showFolderIconDialog(name: String) {
-        val grid = RecyclerView(requireContext())
-        grid.layoutManager = GridLayoutManager(requireContext(), 5)
-        grid.setPadding(dp(16), dp(16), dp(16), dp(16))
-        grid.clipToPadding = false
+        val context = requireContext()
+        val container = LinearLayout(context)
+        container.orientation = LinearLayout.VERTICAL
+        container.setPadding(dp(16), dp(12), dp(16), 0)
 
-        val dialog = AlertDialog.Builder(requireContext())
-            .setTitle(name)
-            .setView(grid)
+        val search = EditText(context)
+        search.hint = getString(R.string.folder_icon_search)
+        search.setSingleLine()
+        container.addView(search)
+
+        val weightRow = LinearLayout(context)
+        weightRow.orientation = LinearLayout.HORIZONTAL
+        container.addView(weightRow)
+
+        val grid = RecyclerView(context)
+        grid.layoutManager = GridLayoutManager(context, 6)
+        grid.layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            (resources.displayMetrics.heightPixels * 0.45f).toInt()
+        )
+        container.addView(grid)
+
+        val dialog = AlertDialog.Builder(context)
+            .setView(container)
             .setNeutralButton(R.string.folder_icon_default) { _, _ ->
                 appListsPrefs.setIcon(name, "")
                 refreshFolders()
             }
             .create()
 
-        grid.adapter = IconPickerAdapter { icon ->
-            appListsPrefs.setIcon(name, FolderIcons.PREFIX + icon)
+        val adapter = IconPickerAdapter(context) { weight, icon ->
+            appListsPrefs.setIcon(name, FolderIcons.store(weight, icon))
             refreshFolders()
             dialog.dismiss()
         }
+        grid.adapter = adapter
+
+        val labels = mutableListOf<TextView>()
+        FolderIcons.weights.forEachIndexed { index, weight ->
+            val tab = TextView(context, null, 0, R.style.TextSmall)
+            tab.text = getString(
+                when (weight) {
+                    "thin" -> R.string.weight_thin
+                    "light" -> R.string.weight_light
+                    "bold" -> R.string.weight_bold
+                    "fill" -> R.string.weight_fill
+                    else -> R.string.weight_regular
+                }
+            )
+            tab.setPadding(dp(10), dp(10), dp(10), dp(10))
+            tab.alpha = if (weight == "regular") 1f else 0.4f
+            tab.setOnClickListener {
+                labels.forEachIndexed { i, other -> other.alpha = if (i == index) 1f else 0.4f }
+                adapter.setWeight(weight)
+            }
+            labels.add(tab)
+            weightRow.addView(tab)
+        }
+
+        search.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                adapter.setQuery(s?.toString().orEmpty())
+            }
+        })
+
         dialog.show()
     }
 

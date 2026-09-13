@@ -17,4 +17,10 @@
     <string name="folder_hidden_apps">Masquées</string>
     <string name="folder_reorder">Réorganiser</string>
     <string name="folder_hidden_from_bar">Masqués de la barre</string>
+    <string name="folder_icon_search">Rechercher une icône</string>
+    <string name="weight_thin">Fin</string>
+    <string name="weight_light">Léger</string>
+    <string name="weight_regular">Normal</string>
+    <string name="weight_bold">Gras</string>
+    <string name="weight_fill">Plein</string>
 </resources>

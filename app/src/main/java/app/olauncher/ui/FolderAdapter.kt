@@ -53,21 +53,30 @@ class FolderAdapter(
     class ViewHolder(private val binding: AdapterFolderBinding) :
         RecyclerView.ViewHolder(binding.root) {
 
+        private val defaultTypeface = binding.folderName.typeface
+        private val defaultTextSize = binding.folderName.textSize /
+            binding.folderName.resources.displayMetrics.scaledDensity
+
         fun bindFolder(folder: Folder, isSelected: Boolean, onClick: (String) -> Unit) =
             with(binding.folderName) {
-                val iconRes = FolderIcons.resOf(folder.icon)
+                val glyph = FolderIcons.glyphOf(context, folder.icon)
+                setCompoundDrawablesRelativeWithIntrinsicBounds(0, 0, 0, 0)
                 when {
-                    iconRes != null -> {
-                        text = ""
-                        setCompoundDrawablesRelativeWithIntrinsicBounds(iconRes, 0, 0, 0)
+                    glyph != null -> {
+                        typeface = FolderIcons.typeface(context, FolderIcons.weightOf(folder.icon))
+                        textSize = 19f
+                        text = glyph
                     }
 
                     folder.icon.isNotBlank() -> {
+                        typeface = defaultTypeface
+                        textSize = defaultTextSize
                         text = folder.icon + "  " + folder.name
-                        setCompoundDrawablesRelativeWithIntrinsicBounds(0, 0, 0, 0)
                     }
 
                     else -> {
+                        typeface = defaultTypeface
+                        textSize = defaultTextSize
                         text = folder.name
                         setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.ic_folder, 0, 0, 0)
                     }

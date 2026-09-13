@@ -15,12 +15,14 @@
         android:padding="8dp"
         android:src="@drawable/ic_drag" />
 
-    <ImageView
+    <TextView
         android:id="@+id/folderRowIcon"
-        android:layout_width="22dp"
-        android:layout_height="22dp"
+        style="@style/TextDefault"
+        android:layout_width="26dp"
+        android:layout_height="wrap_content"
         android:layout_marginStart="4dp"
-        android:contentDescription="@string/folders" />
+        android:gravity="center"
+        android:textSize="20sp" />
 
     <TextView
         android:id="@+id/folderRowName"

@@ -1,35 +1,50 @@
 package app.olauncher.ui
 
+import android.content.Context
+import android.view.Gravity
 import android.view.ViewGroup
-import android.widget.ImageView
+import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import app.olauncher.data.FolderIcons
 
-/** Olauncher V2 - Grille de selection d'icone de dossier (Phosphor Icons). */
+/** Olauncher V2 - Grille de selection parmi les 1512 icones Phosphor. */
 class IconPickerAdapter(
-    private val onPick: (String) -> Unit
+    private val context: Context,
+    private val onPick: (String, String) -> Unit
 ) : RecyclerView.Adapter<IconPickerAdapter.ViewHolder>() {
 
-    private val icons = FolderIcons.all
+    private var names: List<String> = FolderIcons.names(context)
+    private var weight: String = "regular"
 
-    override fun getItemCount(): Int = icons.size
+    fun setWeight(newWeight: String) {
+        weight = newWeight
+        notifyDataSetChanged()
+    }
+
+    fun setQuery(query: String) {
+        names = FolderIcons.search(context, query)
+        notifyDataSetChanged()
+    }
+
+    override fun getItemCount(): Int = names.size
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
         val density = parent.resources.displayMetrics.density
-        val size = (52 * density).toInt()
-        val padding = (12 * density).toInt()
-        val image = ImageView(parent.context)
-        image.layoutParams = ViewGroup.LayoutParams(size, size)
-        image.setPadding(padding, padding, padding, padding)
-        return ViewHolder(image)
+        val size = (54 * density).toInt()
+        val view = TextView(parent.context)
+        view.layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, size)
+        view.gravity = Gravity.CENTER
+        view.textSize = 26f
+        return ViewHolder(view)
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-        val (key, res) = icons[position]
-        holder.image.setImageResource(res)
-        holder.image.contentDescription = key
-        holder.image.setOnClickListener { onPick(key) }
+        val name = names[position]
+        holder.view.typeface = FolderIcons.typeface(context, weight)
+        holder.view.text = FolderIcons.glyph(context, weight, name) ?: ""
+        holder.view.contentDescription = name
+        holder.view.setOnClickListener { onPick(weight, name) }
     }
 
-    class ViewHolder(val image: ImageView) : RecyclerView.ViewHolder(image)
+    class ViewHolder(val view: TextView) : RecyclerView.ViewHolder(view)
 }

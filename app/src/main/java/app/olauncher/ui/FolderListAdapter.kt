@@ -67,22 +67,27 @@ class FolderListAdapter(
         val folder = items[position] ?: return
         val binding = (holder as FolderHolder).binding
 
-        val iconRes = FolderIcons.resOf(folder.icon)
+        val context = binding.root.context
+        val glyph = FolderIcons.glyphOf(context, folder.icon)
         binding.folderRowIcon.visibility = View.VISIBLE
+        binding.folderRowName.text = folder.name
         when {
-            iconRes != null -> {
-                binding.folderRowIcon.setImageResource(iconRes)
-                binding.folderRowName.text = folder.name
+            glyph != null -> {
+                binding.folderRowIcon.typeface =
+                    FolderIcons.typeface(context, FolderIcons.weightOf(folder.icon))
+                binding.folderRowIcon.text = glyph
             }
 
             folder.icon.isNotBlank() -> {
-                binding.folderRowIcon.visibility = View.GONE
-                binding.folderRowName.text = folder.icon + "  " + folder.name
+                binding.folderRowIcon.typeface = null
+                binding.folderRowIcon.text = folder.icon
             }
 
             else -> {
-                binding.folderRowIcon.setImageResource(R.drawable.ic_folder)
-                binding.folderRowName.text = folder.name
+                binding.folderRowIcon.typeface =
+                    FolderIcons.typeface(context, "regular")
+                binding.folderRowIcon.text =
+                    FolderIcons.glyph(context, "regular", "folder") ?: ""
             }
         }
 
