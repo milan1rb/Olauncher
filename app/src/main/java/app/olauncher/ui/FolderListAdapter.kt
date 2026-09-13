@@ -30,7 +30,13 @@ class FolderListAdapter(
     /** null = le separateur */
     private val items = mutableListOf<Folder?>()
 
+    /** La section "masques de la barre" demarre repliee. */
+    private var expanded = false
+
+    private fun separatorIndex(): Int = items.indexOfFirst { it == null }.coerceAtLeast(0)
+
     fun setFolders(folders: List<Folder>, visibleCount: Int) {
+        expanded = false
         items.clear()
         val cut = visibleCount.coerceIn(0, folders.size)
         items.addAll(folders.take(cut))
@@ -51,7 +57,8 @@ class FolderListAdapter(
         return true
     }
 
-    override fun getItemCount(): Int = items.size
+    override fun getItemCount(): Int =
+        if (expanded) items.size else separatorIndex() + 1
 
     override fun getItemViewType(position: Int): Int =
         if (items[position] == null) TYPE_SEPARATOR else TYPE_FOLDER
@@ -64,7 +71,19 @@ class FolderListAdapter(
     }
 
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
-        val folder = items[position] ?: return
+        val folder = items[position]
+        if (folder == null) {
+            val hidden = items.size - separatorIndex() - 1
+            val label = (holder as SeparatorHolder).binding.separatorLabel
+            val arrow = if (expanded) "▾" else "▸"
+            label.text = label.context.getString(R.string.folder_hidden_from_bar) +
+                "  ($hidden)  $arrow"
+            holder.itemView.setOnClickListener {
+                expanded = !expanded
+                notifyDataSetChanged()
+            }
+            return
+        }
         val binding = (holder as FolderHolder).binding
 
         val context = binding.root.context
@@ -105,6 +124,6 @@ class FolderListAdapter(
     class FolderHolder(val binding: AdapterFolderRowBinding) :
         RecyclerView.ViewHolder(binding.root)
 
-    class SeparatorHolder(binding: AdapterFolderSeparatorBinding) :
+    class SeparatorHolder(val binding: AdapterFolderSeparatorBinding) :
         RecyclerView.ViewHolder(binding.root)
 }
