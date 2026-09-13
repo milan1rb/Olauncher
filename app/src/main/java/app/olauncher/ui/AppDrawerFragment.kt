@@ -399,7 +399,7 @@ class AppDrawerFragment : BaseFragment() {
         val folders: List<Folder> = appListsPrefs.getFolders()
         if (selectedFolder != null && folders.none { it.name == selectedFolder }) selectedFolder = null
         binding.folderBar.visibility = View.VISIBLE
-        folderAdapter.setFolders(folders, selectedFolder)
+        folderAdapter.setFolders(folders.take(appListsPrefs.visibleCount()), selectedFolder)
     }
 
     /** Balayage horizontal dans le tiroir = dossier suivant / precedent. */
@@ -435,7 +435,7 @@ class AppDrawerFragment : BaseFragment() {
     private fun switchFolder(direction: Int) {
         if (flag != Constants.FLAG_LAUNCH_APP) return
         if (binding.search.query.isNullOrBlank().not()) return
-        val names = appListsPrefs.names()
+        val names = appListsPrefs.names().take(appListsPrefs.visibleCount())
         if (names.isEmpty()) return
 
         val items: List<String?> = listOf(null) + names
@@ -524,7 +524,7 @@ class AppDrawerFragment : BaseFragment() {
             },
             onStartDrag = { holder -> touchHelper.startDrag(holder) }
         )
-        listAdapter.setFolders(appListsPrefs.getFolders())
+        listAdapter.setFolders(appListsPrefs.getFolders(), appListsPrefs.visibleCount())
 
         dialogBinding.dialogFolderList.layoutManager = LinearLayoutManager(requireContext())
         dialogBinding.dialogFolderList.adapter = listAdapter
@@ -533,6 +533,14 @@ class AppDrawerFragment : BaseFragment() {
             ItemTouchHelper.UP or ItemTouchHelper.DOWN, 0
         ) {
             override fun isLongPressDragEnabled(): Boolean = false
+
+            override fun getMovementFlags(
+                recyclerView: RecyclerView,
+                viewHolder: RecyclerView.ViewHolder
+            ): Int {
+                if (viewHolder.itemViewType == FolderListAdapter.TYPE_SEPARATOR) return 0
+                return super.getMovementFlags(recyclerView, viewHolder)
+            }
 
             override fun onMove(
                 recyclerView: RecyclerView,
@@ -567,6 +575,7 @@ class AppDrawerFragment : BaseFragment() {
 
         dialog.setOnDismissListener {
             appListsPrefs.setOrder(listAdapter.currentOrder())
+            appListsPrefs.setVisibleCount(listAdapter.visibleCount())
             refreshFolders()
         }
         dialog.show()

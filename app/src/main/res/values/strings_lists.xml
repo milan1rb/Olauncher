@@ -16,4 +16,5 @@
     <string name="folder_icon_custom_hint">Saisis ou colle un emoji</string>
     <string name="folder_hidden_apps">Masquées</string>
     <string name="folder_reorder">Réorganiser</string>
+    <string name="folder_hidden_from_bar">Masqués de la barre</string>
 </resources>

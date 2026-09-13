@@ -1,82 +1,105 @@
 package app.olauncher.ui
 
-import android.annotation.SuppressLint
 import android.view.LayoutInflater
 import android.view.MotionEvent
+import android.view.View
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
-import android.view.View
 import app.olauncher.R
 import app.olauncher.data.Folder
 import app.olauncher.data.FolderIcons
 import app.olauncher.databinding.AdapterFolderRowBinding
+import app.olauncher.databinding.AdapterFolderSeparatorBinding
 
 /**
- * Olauncher V2 - Liste des dossiers dans le menu "...".
- * Chaque ligne se deplace en maintenant la poignee a droite.
+ * Olauncher V2 - Liste des dossiers du menu "...".
+ * Un separateur indique la limite : au-dessus, les dossiers apparaissent dans
+ * la barre du tiroir ; en dessous, ils ne vivent que dans ce menu.
  */
 class FolderListAdapter(
     private val onClick: (String) -> Unit,
     private val onLongClick: (String) -> Unit,
     private val onStartDrag: (RecyclerView.ViewHolder) -> Unit
-) : RecyclerView.Adapter<FolderListAdapter.ViewHolder>() {
+) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
-    private val folders = mutableListOf<Folder>()
+    companion object {
+        const val TYPE_FOLDER = 0
+        const val TYPE_SEPARATOR = 1
+    }
 
-    fun setFolders(newFolders: List<Folder>) {
-        folders.clear()
-        folders.addAll(newFolders)
+    /** null = le separateur */
+    private val items = mutableListOf<Folder?>()
+
+    fun setFolders(folders: List<Folder>, visibleCount: Int) {
+        items.clear()
+        val cut = visibleCount.coerceIn(0, folders.size)
+        items.addAll(folders.take(cut))
+        items.add(null)
+        items.addAll(folders.drop(cut))
         notifyDataSetChanged()
     }
 
-    fun currentOrder(): List<String> = folders.map { it.name }
+    fun currentOrder(): List<String> = items.filterNotNull().map { it.name }
+
+    /** Nombre de dossiers situes au-dessus du separateur. */
+    fun visibleCount(): Int = items.indexOfFirst { it == null }.coerceAtLeast(0)
 
     fun moveItem(from: Int, to: Int): Boolean {
-        if (from !in folders.indices || to !in folders.indices) return false
-        folders.add(to, folders.removeAt(from))
+        if (from !in items.indices || to !in items.indices) return false
+        items.add(to, items.removeAt(from))
         notifyItemMoved(from, to)
         return true
     }
 
-    override fun getItemCount(): Int = folders.size
+    override fun getItemCount(): Int = items.size
 
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder =
-        ViewHolder(
-            AdapterFolderRowBinding.inflate(LayoutInflater.from(parent.context), parent, false)
-        )
+    override fun getItemViewType(position: Int): Int =
+        if (items[position] == null) TYPE_SEPARATOR else TYPE_FOLDER
 
-    @SuppressLint("ClickableViewAccessibility")
-    override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-        val folder = folders[position]
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
+        val inflater = LayoutInflater.from(parent.context)
+        return if (viewType == TYPE_SEPARATOR)
+            SeparatorHolder(AdapterFolderSeparatorBinding.inflate(inflater, parent, false))
+        else FolderHolder(AdapterFolderRowBinding.inflate(inflater, parent, false))
+    }
+
+    override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
+        val folder = items[position] ?: return
+        val binding = (holder as FolderHolder).binding
+
         val iconRes = FolderIcons.resOf(folder.icon)
-        holder.binding.folderRowIcon.visibility = View.VISIBLE
+        binding.folderRowIcon.visibility = View.VISIBLE
         when {
             iconRes != null -> {
-                holder.binding.folderRowIcon.setImageResource(iconRes)
-                holder.binding.folderRowName.text = folder.name
+                binding.folderRowIcon.setImageResource(iconRes)
+                binding.folderRowName.text = folder.name
             }
 
             folder.icon.isNotBlank() -> {
-                holder.binding.folderRowIcon.visibility = View.GONE
-                holder.binding.folderRowName.text = folder.icon + "  " + folder.name
+                binding.folderRowIcon.visibility = View.GONE
+                binding.folderRowName.text = folder.icon + "  " + folder.name
             }
 
             else -> {
-                holder.binding.folderRowIcon.setImageResource(R.drawable.ic_folder)
-                holder.binding.folderRowName.text = folder.name
+                binding.folderRowIcon.setImageResource(R.drawable.ic_folder)
+                binding.folderRowName.text = folder.name
             }
         }
-        holder.binding.folderRowName.setOnClickListener { onClick(folder.name) }
-        holder.binding.folderRowName.setOnLongClickListener {
+
+        binding.folderRowName.setOnClickListener { onClick(folder.name) }
+        binding.folderRowName.setOnLongClickListener {
             onLongClick(folder.name)
             true
         }
-        holder.binding.folderRowHandle.setOnTouchListener { _, event ->
+        binding.folderRowHandle.setOnTouchListener { _, event ->
             if (event.actionMasked == MotionEvent.ACTION_DOWN) onStartDrag(holder)
             false
         }
     }
 
-    class ViewHolder(val binding: AdapterFolderRowBinding) :
+    class FolderHolder(val binding: AdapterFolderRowBinding) :
+        RecyclerView.ViewHolder(binding.root)
+
+    class SeparatorHolder(binding: AdapterFolderSeparatorBinding) :
         RecyclerView.ViewHolder(binding.root)
 }

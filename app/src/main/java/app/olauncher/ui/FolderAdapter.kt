@@ -58,7 +58,7 @@ class FolderAdapter(
                 val iconRes = FolderIcons.resOf(folder.icon)
                 when {
                     iconRes != null -> {
-                        text = folder.name
+                        text = ""
                         setCompoundDrawablesRelativeWithIntrinsicBounds(iconRes, 0, 0, 0)
                     }
 
