@@ -55,11 +55,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          APK=$(ls app/build/outputs/apk/debug/*.apk | head -1)
+          SRC=$(ls app/build/outputs/apk/debug/*.apk | head -1)
+          APK="olauncher-v2-$(date +%m%d-%H%M).apk"
+          cp "$SRC" "$APK"
           if gh release view v2.0-dev >/dev/null 2>&1; then
+            gh release delete-asset v2.0-dev $(gh release view v2.0-dev --json assets -q '.assets[].name' | tr '\n' ' ') --yes || true
             gh release upload v2.0-dev "$APK" --clobber
           else
             gh release create v2.0-dev "$APK" \
               --title "Olauncher V2 (build de test)" \
               --notes "APK genere automatiquement."
           fi
+          echo "Fichier publie : $APK"
