@@ -10,6 +10,8 @@ import android.text.TextWatcher
 import android.view.GestureDetector
 import android.view.LayoutInflater
 import android.view.MotionEvent
+import android.view.animation.AccelerateInterpolator
+import android.view.animation.DecelerateInterpolator
 import android.view.View
 import android.view.ViewGroup
 import android.view.animation.AnimationUtils
@@ -65,6 +67,7 @@ class AppDrawerFragment : BaseFragment() {
     private var selectedFolder: String? = null
     private lateinit var folderAdapter: FolderAdapter
     private var folderPage = 0
+    private var isPagingFolders = false
     private lateinit var adapter: AppDrawerAdapter
     private lateinit var linearLayoutManager: LinearLayoutManager
     private var searchTextView: TextView? = null
@@ -459,9 +462,30 @@ class AppDrawerFragment : BaseFragment() {
     private fun changeFolderPage(direction: Int) {
         val count = appListsPrefs.visibleCount()
         val pages = max(1, ceil(count / FOLDERS_PER_PAGE.toFloat()).toInt())
-        if (pages <= 1) return
-        folderPage = (folderPage + direction + pages) % pages
-        refreshFolders()
+        if (pages <= 1 || isPagingFolders) return
+        isPagingFolders = true
+
+        val bar = binding.folderRecycler
+        val shift = bar.width * 0.3f
+
+        bar.animate()
+            .translationX(-direction * shift)
+            .alpha(0f)
+            .setDuration(120)
+            .setInterpolator(AccelerateInterpolator())
+            .withEndAction {
+                folderPage = (folderPage + direction + pages) % pages
+                refreshFolders()
+                bar.translationX = direction * shift
+                bar.animate()
+                    .translationX(0f)
+                    .alpha(1f)
+                    .setDuration(180)
+                    .setInterpolator(DecelerateInterpolator())
+                    .withEndAction { isPagingFolders = false }
+                    .start()
+            }
+            .start()
     }
 
     /** Balayage horizontal dans le tiroir = dossier suivant / precedent. */
