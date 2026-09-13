@@ -5,6 +5,7 @@ import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
 import app.olauncher.R
 import app.olauncher.data.Folder
+import app.olauncher.data.FolderIcons
 import app.olauncher.databinding.AdapterFolderBinding
 
 /**
@@ -54,12 +55,22 @@ class FolderAdapter(
 
         fun bindFolder(folder: Folder, isSelected: Boolean, onClick: (String) -> Unit) =
             with(binding.folderName) {
-                if (folder.icon.isBlank()) {
-                    text = folder.name
-                    setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.ic_folder, 0, 0, 0)
-                } else {
-                    text = folder.icon + "  " + folder.name
-                    setCompoundDrawablesRelativeWithIntrinsicBounds(0, 0, 0, 0)
+                val iconRes = FolderIcons.resOf(folder.icon)
+                when {
+                    iconRes != null -> {
+                        text = folder.name
+                        setCompoundDrawablesRelativeWithIntrinsicBounds(iconRes, 0, 0, 0)
+                    }
+
+                    folder.icon.isNotBlank() -> {
+                        text = folder.icon + "  " + folder.name
+                        setCompoundDrawablesRelativeWithIntrinsicBounds(0, 0, 0, 0)
+                    }
+
+                    else -> {
+                        text = folder.name
+                        setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.ic_folder, 0, 0, 0)
+                    }
                 }
                 this.isSelected = isSelected
                 setOnClickListener { onClick(folder.name) }

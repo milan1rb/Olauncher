@@ -22,6 +22,7 @@ import androidx.core.os.bundleOf
 import androidx.fragment.app.activityViewModels
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.ItemTouchHelper
+import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.RecyclerView.Recycler
@@ -30,6 +31,7 @@ import app.olauncher.R
 import app.olauncher.data.AppLists
 import app.olauncher.data.AppModel
 import app.olauncher.data.Folder
+import app.olauncher.data.FolderIcons
 import app.olauncher.data.Constants
 import app.olauncher.data.Prefs
 import app.olauncher.databinding.DialogFoldersBinding
@@ -648,44 +650,26 @@ class AppDrawerFragment : BaseFragment() {
     }
 
     private fun showFolderIconDialog(name: String) {
-        val icons = listOf(
-            "", "📁", "⭐", "💬", "🎮", "🎵", "📷", "🛒", "💼", "📚", "⚙️", "🏃",
-            "🍔", "✈️", "💰", "❤️", "🎬", "📞", "🌐", "🔧", "📝", "☁️", "🔒", "🎨"
-        )
-        val labels = icons.map {
-            if (it.isBlank()) getString(R.string.folder_icon_default) else it
-        }.toTypedArray()
+        val grid = RecyclerView(requireContext())
+        grid.layoutManager = GridLayoutManager(requireContext(), 5)
+        grid.setPadding(dp(16), dp(16), dp(16), dp(16))
+        grid.clipToPadding = false
 
-        AlertDialog.Builder(requireContext())
+        val dialog = AlertDialog.Builder(requireContext())
             .setTitle(name)
-            .setItems(labels) { _, which ->
-                appListsPrefs.setIcon(name, icons[which])
+            .setView(grid)
+            .setNeutralButton(R.string.folder_icon_default) { _, _ ->
+                appListsPrefs.setIcon(name, "")
                 refreshFolders()
             }
-            .setNeutralButton(R.string.folder_icon_custom) { _, _ ->
-                showCustomIconDialog(name)
-            }
-            .show()
-    }
+            .create()
 
-    private fun showCustomIconDialog(name: String) {
-        val input = EditText(requireContext())
-        input.hint = getString(R.string.folder_icon_custom_hint)
-        input.setSingleLine()
-        val container = FrameLayout(requireContext())
-        container.setPadding(dp(24), dp(8), dp(24), 0)
-        container.addView(input)
-
-        AlertDialog.Builder(requireContext())
-            .setTitle(R.string.folder_icon_custom)
-            .setView(container)
-            .setPositiveButton(android.R.string.ok) { _, _ ->
-                appListsPrefs.setIcon(name, input.text.toString().trim().take(2))
-                refreshFolders()
-            }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
-        input.showKeyboard()
+        grid.adapter = IconPickerAdapter { icon ->
+            appListsPrefs.setIcon(name, FolderIcons.PREFIX + icon)
+            refreshFolders()
+            dialog.dismiss()
+        }
+        dialog.show()
     }
 
     private fun showRenameFolderDialog(name: String) {

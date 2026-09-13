@@ -5,7 +5,10 @@ import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
+import android.view.View
+import app.olauncher.R
 import app.olauncher.data.Folder
+import app.olauncher.data.FolderIcons
 import app.olauncher.databinding.AdapterFolderRowBinding
 
 /**
@@ -44,8 +47,24 @@ class FolderListAdapter(
     @SuppressLint("ClickableViewAccessibility")
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val folder = folders[position]
-        holder.binding.folderRowName.text =
-            if (folder.icon.isBlank()) folder.name else folder.icon + "  " + folder.name
+        val iconRes = FolderIcons.resOf(folder.icon)
+        holder.binding.folderRowIcon.visibility = View.VISIBLE
+        when {
+            iconRes != null -> {
+                holder.binding.folderRowIcon.setImageResource(iconRes)
+                holder.binding.folderRowName.text = folder.name
+            }
+
+            folder.icon.isNotBlank() -> {
+                holder.binding.folderRowIcon.visibility = View.GONE
+                holder.binding.folderRowName.text = folder.icon + "  " + folder.name
+            }
+
+            else -> {
+                holder.binding.folderRowIcon.setImageResource(R.drawable.ic_folder)
+                holder.binding.folderRowName.text = folder.name
+            }
+        }
         holder.binding.folderRowName.setOnClickListener { onClick(folder.name) }
         holder.binding.folderRowHandle.setOnTouchListener { _, event ->
             if (event.actionMasked == MotionEvent.ACTION_DOWN) onStartDrag(holder)
