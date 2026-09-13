@@ -23,7 +23,7 @@ class AppLists(context: Context) {
     companion object {
         private const val PREFS_FILENAME = "app.olauncher"
         private const val APP_LISTS = "APP_LISTS"
-        const val MAX_LISTS = 12
+        const val MAX_LISTS = Int.MAX_VALUE
 
         fun idOf(appModel: AppModel): String = when (appModel) {
             is AppModel.PinnedShortcut -> appModel.identity

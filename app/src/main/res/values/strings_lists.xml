@@ -3,7 +3,7 @@
     <string name="folders">Dossiers</string>
     <string name="new_folder">Nouveau dossier</string>
     <string name="folder_name_hint">Nom du dossier</string>
-    <string name="folder_name_invalid">Nom invalide, déjà utilisé ou limite atteinte</string>
+    <string name="folder_name_invalid">Nom vide ou déjà utilisé</string>
     <string name="folder_create">Créer</string>
     <string name="folder_delete">Supprimer le dossier</string>
     <string name="folder_done">Terminé</string>

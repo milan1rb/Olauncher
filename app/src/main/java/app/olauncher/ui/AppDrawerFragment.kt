@@ -600,6 +600,16 @@ class AppDrawerFragment : BaseFragment() {
             refreshFolders()
         }
         dialog.show()
+
+        // Hauteur plafonnee : la liste defile au lieu de s'etirer
+        dialogBinding.dialogFolderList.post {
+            val maxHeight = (resources.displayMetrics.heightPixels * 0.45f).toInt()
+            if (dialogBinding.dialogFolderList.height > maxHeight) {
+                dialogBinding.dialogFolderList.layoutParams =
+                    dialogBinding.dialogFolderList.layoutParams.apply { height = maxHeight }
+                dialogBinding.dialogFolderList.requestLayout()
+            }
+        }
     }
 
     private fun showAppFoldersDialog(appModel: AppModel) {
