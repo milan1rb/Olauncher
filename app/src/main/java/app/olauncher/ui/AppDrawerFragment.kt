@@ -518,6 +518,10 @@ class AppDrawerFragment : BaseFragment() {
                 binding.recyclerView.scrollToPosition(0)
                 dialog.dismiss()
             },
+            onLongClick = { name ->
+                dialog.dismiss()
+                showFolderOptionsDialog(name)
+            },
             onStartDrag = { holder -> touchHelper.startDrag(holder) }
         )
         listAdapter.setFolders(appListsPrefs.getFolders())
@@ -528,7 +532,7 @@ class AppDrawerFragment : BaseFragment() {
         touchHelper = ItemTouchHelper(object : ItemTouchHelper.SimpleCallback(
             ItemTouchHelper.UP or ItemTouchHelper.DOWN, 0
         ) {
-            override fun isLongPressDragEnabled(): Boolean = true
+            override fun isLongPressDragEnabled(): Boolean = false
 
             override fun onMove(
                 recyclerView: RecyclerView,

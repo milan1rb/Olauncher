@@ -17,6 +17,7 @@ import app.olauncher.databinding.AdapterFolderRowBinding
  */
 class FolderListAdapter(
     private val onClick: (String) -> Unit,
+    private val onLongClick: (String) -> Unit,
     private val onStartDrag: (RecyclerView.ViewHolder) -> Unit
 ) : RecyclerView.Adapter<FolderListAdapter.ViewHolder>() {
 
@@ -66,6 +67,10 @@ class FolderListAdapter(
             }
         }
         holder.binding.folderRowName.setOnClickListener { onClick(folder.name) }
+        holder.binding.folderRowName.setOnLongClickListener {
+            onLongClick(folder.name)
+            true
+        }
         holder.binding.folderRowHandle.setOnTouchListener { _, event ->
             if (event.actionMasked == MotionEvent.ACTION_DOWN) onStartDrag(holder)
             false
