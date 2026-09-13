@@ -371,7 +371,7 @@ class AppDrawerFragment : BaseFragment() {
 
     private fun initFolders() {
         if (flag != Constants.FLAG_LAUNCH_APP) {
-            binding.folderRecycler.visibility = View.GONE
+            binding.folderBar.visibility = View.GONE
             return
         }
 
@@ -380,9 +380,9 @@ class AppDrawerFragment : BaseFragment() {
                 selectedFolder = if (selectedFolder == name) null else name
                 refreshFolders()
                 updateCombinedAppList()
-            },
-            onMore = { showAllFoldersDialog() }
+            }
         )
+        binding.folderMore.setOnClickListener { showAllFoldersDialog() }
 
         binding.folderRecycler.layoutManager =
             LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
@@ -396,36 +396,8 @@ class AppDrawerFragment : BaseFragment() {
         if (flag != Constants.FLAG_LAUNCH_APP) return
         val folders: List<Folder> = appListsPrefs.getFolders()
         if (selectedFolder != null && folders.none { it.name == selectedFolder }) selectedFolder = null
-        binding.folderRecycler.visibility = View.VISIBLE
-        folderAdapter.setFolders(folders, selectedFolder, visibleFolderCount(folders))
-        binding.folderRecycler.post {
-            folderAdapter.setFolders(folders, selectedFolder, visibleFolderCount(folders))
-        }
-    }
-
-    /** Nombre de dossiers tenant sur une ligne, en reservant la place du bouton "..." */
-    private fun visibleFolderCount(folders: List<Folder>): Int {
-        val available = binding.folderRecycler.width -
-            binding.folderRecycler.paddingStart - binding.folderRecycler.paddingEnd
-        if (available <= 0) return folders.size
-
-        val sample = TextView(requireContext(), null, 0, R.style.TextSmall)
-        val density = resources.displayMetrics.density
-        fun chipWidth(label: String, hasIcon: Boolean): Int {
-            val extras = (10 + 10 + 4) * density + if (hasIcon) (16 + 6) * density else 0f
-            return (sample.paint.measureText(label) + extras).toInt()
-        }
-
-        var used = chipWidth("• • •", false)
-        var count = 0
-        for (folder in folders) {
-            val label = if (folder.icon.isBlank()) folder.name else folder.icon + "  " + folder.name
-            val width = chipWidth(label, folder.icon.isBlank())
-            if (used + width > available) break
-            used += width
-            count++
-        }
-        return count
+        binding.folderBar.visibility = View.VISIBLE
+        folderAdapter.setFolders(folders, selectedFolder)
     }
 
     /** Balayage horizontal dans le tiroir = dossier suivant / precedent. */
@@ -472,6 +444,7 @@ class AppDrawerFragment : BaseFragment() {
         selectedFolder = items[next]
         refreshFolders()
         updateCombinedAppList()
+        if (next > 0) binding.folderRecycler.smoothScrollToPosition(next - 1)
         binding.recyclerView.scrollToPosition(0)
     }
 
@@ -483,20 +456,11 @@ class AppDrawerFragment : BaseFragment() {
         return object : ItemTouchHelper.SimpleCallback(
             ItemTouchHelper.START or ItemTouchHelper.END, 0
         ) {
-            override fun getMovementFlags(
-                recyclerView: RecyclerView,
-                viewHolder: RecyclerView.ViewHolder
-            ): Int {
-                if (viewHolder.itemViewType != FolderAdapter.TYPE_FOLDER) return 0
-                return super.getMovementFlags(recyclerView, viewHolder)
-            }
-
             override fun onMove(
                 recyclerView: RecyclerView,
                 viewHolder: RecyclerView.ViewHolder,
                 target: RecyclerView.ViewHolder
             ): Boolean {
-                if (target.itemViewType != FolderAdapter.TYPE_FOLDER) return false
                 val moved = folderAdapter.moveItem(
                     viewHolder.bindingAdapterPosition,
                     target.bindingAdapterPosition
