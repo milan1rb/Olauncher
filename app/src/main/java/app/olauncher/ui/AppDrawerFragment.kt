@@ -49,17 +49,22 @@ import app.olauncher.helper.openSearch
 import app.olauncher.helper.openUrl
 import app.olauncher.helper.showKeyboard
 import kotlin.math.abs
+import kotlin.math.ceil
+import kotlin.math.max
 import app.olauncher.helper.showToast
 import app.olauncher.helper.uninstall
 
 class AppDrawerFragment : BaseFragment() {
+
+    private val FOLDERS_PER_PAGE = 6
+
 
 
     private lateinit var prefs: Prefs
     private lateinit var appListsPrefs: AppLists
     private var selectedFolder: String? = null
     private lateinit var folderAdapter: FolderAdapter
-    private var dragMoved = false
+    private var folderPage = 0
     private lateinit var adapter: AppDrawerAdapter
     private lateinit var linearLayoutManager: LinearLayoutManager
     private var searchTextView: TextView? = null
@@ -385,14 +390,17 @@ class AppDrawerFragment : BaseFragment() {
                 selectedFolder = if (selectedFolder == name) null else name
                 refreshFolders()
                 updateCombinedAppList()
-            }
+            },
+            onFolderLongClick = { name -> showFolderOptionsDialog(name) }
         )
         binding.folderMore.setOnClickListener { showAllFoldersDialog() }
 
-        binding.folderRecycler.layoutManager =
-            LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
+        binding.folderRecycler.layoutManager = object :
+            LinearLayoutManager(requireContext(), HORIZONTAL, false) {
+            override fun canScrollHorizontally(): Boolean = false
+        }
         binding.folderRecycler.adapter = folderAdapter
-        ItemTouchHelper(folderDragCallback()).attachToRecyclerView(binding.folderRecycler)
+        initFolderBarSwipe()
 
         refreshFolders()
     }
@@ -401,8 +409,59 @@ class AppDrawerFragment : BaseFragment() {
         if (flag != Constants.FLAG_LAUNCH_APP) return
         val folders: List<Folder> = appListsPrefs.getFolders()
         if (selectedFolder != null && folders.none { it.name == selectedFolder }) selectedFolder = null
+
+        val visible = folders.take(appListsPrefs.visibleCount())
+        val pages = max(1, ceil(visible.size / FOLDERS_PER_PAGE.toFloat()).toInt())
+        folderPage = folderPage.coerceIn(0, pages - 1)
+        val page = visible.drop(folderPage * FOLDERS_PER_PAGE).take(FOLDERS_PER_PAGE)
+
         binding.folderBar.visibility = View.VISIBLE
-        folderAdapter.setFolders(folders.take(appListsPrefs.visibleCount()), selectedFolder)
+        applyFolderPage(page)
+        binding.folderRecycler.post { applyFolderPage(page) }
+    }
+
+    private fun applyFolderPage(page: List<Folder>) {
+        val width = binding.folderRecycler.width -
+            binding.folderRecycler.paddingStart - binding.folderRecycler.paddingEnd
+        if (width > 0) folderAdapter.cellWidth = width / FOLDERS_PER_PAGE
+        folderAdapter.setFolders(page, selectedFolder)
+    }
+
+    /** Balayage horizontal sur la barre = bloc de 6 dossiers suivant / precedent. */
+    private fun initFolderBarSwipe() {
+        val detector = GestureDetector(
+            requireContext(),
+            object : GestureDetector.SimpleOnGestureListener() {
+                override fun onFling(
+                    e1: MotionEvent?,
+                    e2: MotionEvent,
+                    velocityX: Float,
+                    velocityY: Float
+                ): Boolean {
+                    if (e1 == null) return false
+                    val dx = e2.x - e1.x
+                    if (abs(dx) < dp(50) || abs(dx) < abs(e2.y - e1.y)) return false
+                    changeFolderPage(if (dx < 0) 1 else -1)
+                    return true
+                }
+            }
+        )
+        binding.folderRecycler.addOnItemTouchListener(
+            object : RecyclerView.SimpleOnItemTouchListener() {
+                override fun onInterceptTouchEvent(rv: RecyclerView, e: MotionEvent): Boolean {
+                    detector.onTouchEvent(e)
+                    return false
+                }
+            }
+        )
+    }
+
+    private fun changeFolderPage(direction: Int) {
+        val count = appListsPrefs.visibleCount()
+        val pages = max(1, ceil(count / FOLDERS_PER_PAGE.toFloat()).toInt())
+        if (pages <= 1) return
+        folderPage = (folderPage + direction + pages) % pages
+        refreshFolders()
     }
 
     /** Balayage horizontal dans le tiroir = dossier suivant / precedent. */
@@ -447,61 +506,10 @@ class AppDrawerFragment : BaseFragment() {
         if (next >= items.size) next = 0
 
         selectedFolder = items[next]
+        if (next > 0) folderPage = (next - 1) / FOLDERS_PER_PAGE
         refreshFolders()
         updateCombinedAppList()
-        if (next > 0) binding.folderRecycler.smoothScrollToPosition(next - 1)
         binding.recyclerView.scrollToPosition(0)
-    }
-
-    /**
-     * Appui long + glissement = reordonner les dossiers.
-     * Appui long sans bouger = menu renommer / icone / supprimer.
-     */
-    private fun folderDragCallback(): ItemTouchHelper.Callback {
-        return object : ItemTouchHelper.SimpleCallback(
-            ItemTouchHelper.START or ItemTouchHelper.END, 0
-        ) {
-            override fun onMove(
-                recyclerView: RecyclerView,
-                viewHolder: RecyclerView.ViewHolder,
-                target: RecyclerView.ViewHolder
-            ): Boolean {
-                val moved = folderAdapter.moveItem(
-                    viewHolder.bindingAdapterPosition,
-                    target.bindingAdapterPosition
-                )
-                if (moved) dragMoved = true
-                return moved
-            }
-
-            override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {}
-
-            override fun onSelectedChanged(
-                viewHolder: RecyclerView.ViewHolder?,
-                actionState: Int
-            ) {
-                super.onSelectedChanged(viewHolder, actionState)
-                if (actionState == ItemTouchHelper.ACTION_STATE_DRAG) {
-                    dragMoved = false
-                    viewHolder?.itemView?.alpha = 0.6f
-                }
-            }
-
-            override fun clearView(
-                recyclerView: RecyclerView,
-                viewHolder: RecyclerView.ViewHolder
-            ) {
-                super.clearView(recyclerView, viewHolder)
-                viewHolder.itemView.alpha = 1f
-                val position = viewHolder.bindingAdapterPosition
-                if (dragMoved) {
-                    appListsPrefs.setOrder(folderAdapter.currentOrder())
-                } else {
-                    folderAdapter.folderAt(position)?.let { showFolderOptionsDialog(it) }
-                }
-                dragMoved = false
-            }
-        }
     }
 
     /** Menu "..." : dossiers reordonnables, creation et applis masquees. */

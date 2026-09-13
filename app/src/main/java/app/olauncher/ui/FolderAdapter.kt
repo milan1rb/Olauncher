@@ -13,11 +13,15 @@ import app.olauncher.databinding.AdapterFolderBinding
  * Le dernier element est toujours le bouton "+".
  */
 class FolderAdapter(
-    private val onFolderClick: (String) -> Unit
+    private val onFolderClick: (String) -> Unit,
+    private val onFolderLongClick: (String) -> Unit
 ) : RecyclerView.Adapter<FolderAdapter.ViewHolder>() {
 
     private val folders = mutableListOf<Folder>()
     private var selected: String? = null
+
+    /** Largeur imposee a chaque pastille : la barre affiche exactement 6 colonnes. */
+    var cellWidth: Int = 0
     fun setFolders(newFolders: List<Folder>, selectedFolder: String?) {
         folders.clear()
         folders.addAll(newFolders)
@@ -46,8 +50,13 @@ class FolderAdapter(
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
+        if (cellWidth > 0) {
+            holder.itemView.layoutParams = holder.itemView.layoutParams.also {
+                it.width = cellWidth
+            }
+        }
         val folder = folders[position]
-        holder.bindFolder(folder, folder.name == selected, onFolderClick)
+        holder.bindFolder(folder, folder.name == selected, onFolderClick, onFolderLongClick)
     }
 
     class ViewHolder(private val binding: AdapterFolderBinding) :
@@ -57,8 +66,12 @@ class FolderAdapter(
         private val defaultTextSize = binding.folderName.textSize /
             binding.folderName.resources.displayMetrics.scaledDensity
 
-        fun bindFolder(folder: Folder, isSelected: Boolean, onClick: (String) -> Unit) =
-            with(binding.folderName) {
+        fun bindFolder(
+            folder: Folder,
+            isSelected: Boolean,
+            onClick: (String) -> Unit,
+            onLongClick: (String) -> Unit
+        ) = with(binding.folderName) {
                 val glyph = FolderIcons.glyphOf(context, folder.icon)
                 setCompoundDrawablesRelativeWithIntrinsicBounds(0, 0, 0, 0)
                 when {
@@ -83,6 +96,10 @@ class FolderAdapter(
                 }
                 this.isSelected = isSelected
                 setOnClickListener { onClick(folder.name) }
+                setOnLongClickListener {
+                    onLongClick(folder.name)
+                    true
+                }
             }
     }
 }
