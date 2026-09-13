@@ -4,20 +4,18 @@ import android.content.Context
 import androidx.core.content.edit
 import org.json.JSONArray
 import org.json.JSONObject
-import java.util.UUID
 
-/**
- * Un dossier. L'identite repose sur [id], donc le nom peut etre vide
- * ou identique a celui d'un autre dossier.
- */
+/** Un dossier : un nom, une icone (emoji, vide = icone par defaut) et des applis. */
 data class Folder(
-    val id: String,
-    var name: String = "",
+    val name: String,
     var icon: String = "",
     val apps: MutableSet<String> = mutableSetOf()
 )
 
-/** Olauncher V2 - Stockage des dossiers (JSON dans les SharedPreferences). */
+/**
+ * Olauncher V2 - Stockage des dossiers d'applications.
+ * JSON dans les SharedPreferences existantes, ordre conserve.
+ */
 class AppLists(context: Context) {
 
     private val prefs = context.getSharedPreferences(PREFS_FILENAME, Context.MODE_PRIVATE)
@@ -26,6 +24,7 @@ class AppLists(context: Context) {
         private const val PREFS_FILENAME = "app.olauncher"
         private const val APP_LISTS = "APP_LISTS"
         private const val VISIBLE_COUNT = "APP_LISTS_VISIBLE"
+        const val MAX_LISTS = Int.MAX_VALUE
 
         fun idOf(appModel: AppModel): String = when (appModel) {
             is AppModel.PinnedShortcut -> appModel.identity
@@ -37,25 +36,20 @@ class AppLists(context: Context) {
         val result = mutableListOf<Folder>()
         val raw = prefs.getString(APP_LISTS, "") ?: ""
         if (raw.isBlank()) return result
-        var needsMigration = false
         try {
             val array = JSONArray(raw)
             for (i in 0 until array.length()) {
                 val obj = array.optJSONObject(i) ?: continue
+                val name = obj.optString("name")
+                if (name.isBlank()) continue
                 val apps = mutableSetOf<String>()
                 val appsArray = obj.optJSONArray("apps") ?: JSONArray()
                 for (j in 0 until appsArray.length()) apps.add(appsArray.optString(j))
-                var id = obj.optString("id")
-                if (id.isBlank()) {
-                    id = UUID.randomUUID().toString()
-                    needsMigration = true
-                }
-                result.add(Folder(id, obj.optString("name"), obj.optString("icon"), apps))
+                result.add(Folder(name, obj.optString("icon", ""), apps))
             }
         } catch (e: Exception) {
             e.printStackTrace()
         }
-        if (needsMigration) save(result)
         return result
     }
 
@@ -63,7 +57,6 @@ class AppLists(context: Context) {
         val array = JSONArray()
         folders.forEach { folder ->
             val obj = JSONObject()
-            obj.put("id", folder.id)
             obj.put("name", folder.name)
             obj.put("icon", folder.icon)
             obj.put("apps", JSONArray(folder.apps.toList()))
@@ -72,24 +65,33 @@ class AppLists(context: Context) {
         prefs.edit { putString(APP_LISTS, array.toString()) }
     }
 
-    fun folderById(id: String?): Folder? =
-        if (id == null) null else getFolders().firstOrNull { it.id == id }
+    fun names(): List<String> = getFolders().map { it.name }
 
-    fun ids(): List<String> = getFolders().map { it.id }
+    /** Nombre de dossiers affiches dans la barre. Les suivants ne vivent que dans le menu. */
+    fun visibleCount(): Int {
+        val size = getFolders().size
+        val stored = prefs.getInt(VISIBLE_COUNT, -1)
+        return if (stored < 0) size else stored.coerceIn(0, size)
+    }
 
-    fun appsIn(id: String): Set<String> = folderById(id)?.apps ?: emptySet()
+    fun setVisibleCount(count: Int) {
+        prefs.edit { putInt(VISIBLE_COUNT, count.coerceAtLeast(0)) }
+    }
 
+    fun appsIn(name: String): Set<String> =
+        getFolders().firstOrNull { it.name == name }?.apps ?: emptySet()
+
+    /** Toutes les applis rangees dans au moins un dossier. */
     fun allFolderedApps(): Set<String> {
         val all = mutableSetOf<String>()
         getFolders().forEach { all.addAll(it.apps) }
         return all
     }
 
-    /** id d'appli -> noms des dossiers, pour l'affichage dans la recherche. */
+    /** id d'appli -> "Travail, Jeux" (pour l'affichage dans la recherche). */
     fun labelsByApp(): Map<String, String> {
         val map = mutableMapOf<String, MutableList<String>>()
         getFolders().forEach { folder ->
-            if (folder.name.isBlank()) return@forEach
             folder.apps.forEach { appId ->
                 map.getOrPut(appId) { mutableListOf() }.add(folder.name)
             }
@@ -97,44 +99,49 @@ class AppLists(context: Context) {
         return map.mapValues { it.value.joinToString(", ") }
     }
 
-    /** Cree un dossier. Le nom peut etre vide ou deja utilise. */
-    fun createFolder(name: String): String {
+    fun createList(name: String): Boolean {
+        val clean = name.trim()
+        if (clean.isEmpty()) return false
         val folders = getFolders()
-        val folder = Folder(UUID.randomUUID().toString(), name.trim())
-        folders.add(folder)
+        if (folders.any { it.name == clean } || folders.size >= MAX_LISTS) return false
+        folders.add(Folder(clean))
         save(folders)
-        return folder.id
+        return true
     }
 
-    fun deleteFolder(id: String) {
-        save(getFolders().filterNot { it.id == id })
+    fun deleteList(name: String) {
+        save(getFolders().filterNot { it.name == name })
     }
 
-    fun renameFolder(id: String, newName: String) {
+    fun renameList(oldName: String, newName: String): Boolean {
+        val clean = newName.trim()
+        if (clean.isEmpty()) return false
         val folders = getFolders()
-        folders.firstOrNull { it.id == id }?.name = newName.trim()
-        save(folders)
+        if (folders.none { it.name == oldName } || folders.any { it.name == clean }) return false
+        save(folders.map { if (it.name == oldName) Folder(clean, it.icon, it.apps) else it })
+        return true
     }
 
-    fun setIcon(id: String, icon: String) {
+    fun setIcon(name: String, icon: String) {
         val folders = getFolders()
-        folders.firstOrNull { it.id == id }?.icon = icon
+        folders.firstOrNull { it.name == name }?.icon = icon
         save(folders)
     }
 
+    /** Enregistre un nouvel ordre de dossiers (glisser-deposer). */
     fun setOrder(order: List<String>) {
         val folders = getFolders()
         val reordered = mutableListOf<Folder>()
-        order.forEach { id -> folders.firstOrNull { it.id == id }?.let { reordered.add(it) } }
-        folders.forEach { if (reordered.none { r -> r.id == it.id }) reordered.add(it) }
+        order.forEach { name -> folders.firstOrNull { it.name == name }?.let { reordered.add(it) } }
+        folders.forEach { if (reordered.none { r -> r.name == it.name }) reordered.add(it) }
         save(reordered)
     }
 
-    fun isInFolder(id: String, appId: String): Boolean = appsIn(id).contains(appId)
+    fun isInList(name: String, appId: String): Boolean = appsIn(name).contains(appId)
 
-    fun setAppInFolder(id: String, appId: String, add: Boolean) {
+    fun setAppInList(name: String, appId: String, add: Boolean) {
         val folders = getFolders()
-        val folder = folders.firstOrNull { it.id == id } ?: return
+        val folder = folders.firstOrNull { it.name == name } ?: return
         if (add) folder.apps.add(appId) else folder.apps.remove(appId)
         save(folders)
     }
